@@ -1,151 +1,122 @@
-// utils/emailService.js - الإصدار النهائي
+﻿// utils/emailService.js
 import emailjs from "@emailjs/nodejs";
 import dotenv from "dotenv";
 
 dotenv.config();
 
+const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+const PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY;
+const PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY;
+
+function checkEnv() {
+  const missing = [];
+  if (!SERVICE_ID) missing.push("EMAILJS_SERVICE_ID");
+  if (!TEMPLATE_ID) missing.push("EMAILJS_TEMPLATE_ID");
+  if (!PUBLIC_KEY) missing.push("EMAILJS_PUBLIC_KEY");
+  if (!PRIVATE_KEY) missing.push("EMAILJS_PRIVATE_KEY");
+  return missing;
+}
+
 /**
- * 🔹 إرسال بريد إلكتروني عبر EmailJS
- * @param {string} to - بريد المستلم
- * @param {string} subject - موضوع الرسالة  
- * @param {string} otp_code - كود التحقق
- * @param {string} user_name - اسم المستخدم (اختياري)
+ * sendEmail
+ * إرسال بريد مع تسجيل مفصّل لمساعدة تصحيح الأخطاء.
+ * يعيد كائن مفصل مع status/logs.
  */
 export async function sendEmail(to, subject, otp_code, user_name = "Utilisateur") {
+  const logs = [];
   try {
-    // التحقق من صحة البيانات
-    if (!to || !to.includes('@')) {
-      throw new Error(`❌ البريد الإلكتروني غير صالح: ${to}`);
+    logs.push("🔎 Starting sendEmail...");
+    
+    // 1) تحقق من المتغيرات البيئية
+    const missing = checkEnv();
+    if (missing.length > 0) {
+      const msg = `❌ Missing EmailJS env vars: ${missing.join(", ")}`;
+      logs.push(msg);
+      console.error(msg);
+      return { ok: false, error: msg, logs };
     }
 
-    if (!otp_code) {
-      throw new Error(`❌ كود OTP مطلوب`);
-    }
-
-    // تنظيف وتجهيز البيانات
-    const cleanTo = to.trim();
-    const cleanSubject = subject.trim();
-    const cleanOtp = otp_code.toString().trim();
-    const cleanUserName = (user_name && user_name.trim() !== '') ? user_name.trim() : "Utilisateur";
-
-    console.log("🔄 تجهيز بيانات الإرسال:");
-    console.log("📧 المستلم:", cleanTo);
-    console.log("📋 الموضوع:", cleanSubject);
-    console.log("🔢 الكود:", cleanOtp);
-    console.log("👤 الاسم:", cleanUserName);
-
-    // 🔹 إرسال جميع المتغيرات الممكنة
+    // 2) تحضير payload للـ template - شامل لكل المتغيرات
     const templateParams = {
-      // متغيرات المستلم
-      to_email: cleanTo,
-      email: cleanTo,
-      user_email: cleanTo,
-      recipient: cleanTo,
-      
-      // متغيرات الموضوع
-      subject: cleanSubject,
-      message_subject: cleanSubject,
-      
-      // متغيرات الكود - جميع الاحتمالات
-      otp_code: cleanOtp,
-      code: cleanOtp,
-      verification_code: cleanOtp,
-      otp: cleanOtp,
-      password_code: cleanOtp,
-      reset_code: cleanOtp,
-      
-      // متغيرات الاسم - جميع الاحتمالات
-      user_name: cleanUserName,
-      name: cleanUserName,
-      username: cleanUserName,
-      client_name: cleanUserName,
-      user: cleanUserName,
-      nom: cleanUserName,
-      
-      // متغيرات الرد
-      reply_to: "no-reply@livraison-express.com",
-      reply_to_email: "no-reply@livraison-express.com",
-      
-      // معلومات إضافية
-      app_name: "Livraison Express",
-      company_name: "Livraison Express",
-      expiration_time: "10 minutes"
+      to_email: to,
+      subject: subject,
+      name: user_name,                    // للمتغير {{name}} في القالب
+      user_name: user_name,               // للمتغير {{user_name}} في القالب
+      username: user_name,                // للمتغير {{username}} في القالب
+      code: String(otp_code),             // للمتغير {{code}} في القالب
+      otp_code: String(otp_code),         // للمتغير {{otp_code}} في القالب
+      code_otp: String(otp_code),         // للمتغير {{code_otp}} في القالب
     };
 
-    console.log("🚀 بدء إرسال Email عبر EmailJS...");
-    console.log("🔧 Service ID:", process.env.EMAILJS_SERVICE_ID ? "✅ موجود" : "❌ مفقود");
-    console.log("🔧 Template ID:", process.env.EMAILJS_TEMPLATE_ID ? "✅ موجود" : "❌ مفقود");
+    // 🔍 DEBUG: طباعة البيانات المرسلة
+    console.log("📨 DEBUG - Email Data Being Sent:");
+    console.log("📧 To:", to);
+    console.log("📝 Subject:", subject);
+    console.log("🔢 OTP Code:", otp_code);
+    console.log("👤 User Name:", user_name);
+    console.log("🎯 Template Params:", templateParams);
 
-    // إرسال البريد
-    const response = await emailjs.send(
-      process.env.EMAILJS_SERVICE_ID,
-      process.env.EMAILJS_TEMPLATE_ID,
-      templateParams,
-      {
-        publicKey: process.env.EMAILJS_PUBLIC_KEY,
-        privateKey: process.env.EMAILJS_PRIVATE_KEY,
+    logs.push("📨 Prepared templateParams:");
+    logs.push(JSON.stringify(templateParams));
+
+    // 3) طباعة بيانات الاتصال (بدون مفاتيح حساسة كاملة)
+    logs.push(`🔧 Using SERVICE_ID=${SERVICE_ID}, TEMPLATE_ID=${TEMPLATE_ID}`);
+    logs.push(`🔧 PUBLIC_KEY=${PUBLIC_KEY ? PUBLIC_KEY.slice(0,4) + "..." : "undefined"}`);
+    logs.push(`🔧 PRIVATE_KEY=${PRIVATE_KEY ? PRIVATE_KEY.slice(0,4) + "..." : "undefined"}`);
+
+    // 4) فعلياً استدعاء EmailJS
+    logs.push("⏳ Calling emailjs.send(...)");
+    let response;
+    try {
+      response = await emailjs.send(
+        SERVICE_ID,
+        TEMPLATE_ID,
+        templateParams,
+        {
+          publicKey: PUBLIC_KEY,
+          privateKey: PRIVATE_KEY,
+        }
+      );
+    } catch (sendErr) {
+      logs.push("❌ emailjs.send threw an exception");
+      logs.push(String(sendErr));
+      console.error("❌ EmailJS Send Error:", sendErr);
+      if (sendErr && sendErr.response) {
+        try {
+          logs.push("sendErr.response (raw): " + JSON.stringify(sendErr.response));
+        } catch (e) {}
       }
-    );
-
-    console.log("✅ تم إرسال البريد بنجاح!");
-    console.log("📊 حالة الإرسال:", response.status);
-    console.log("📝 رسالة الاستجابة:", response.text);
-    
-    return response;
-    
-  } catch (error) {
-    console.error("❌ فشل في إرسال البريد:");
-    console.error("📊 كود الخطأ:", error.status);
-    console.error("📝 رسالة الخطأ:", error.text);
-    console.error("🔧 التفاصيل:", error);
-    
-    // معالجة الأخطاء الشائعة
-    if (error.status === 422) {
-      throw new Error("مشكلة في متغيرات القالب - تحقق من أسماء المتغيرات في EmailJS Dashboard");
-    } else if (error.status === 401) {
-      throw new Error("مشكلة في المصادقة - تحقق من API Keys في ملف .env");
-    } else if (error.status === 400) {
-      throw new Error("طلب غير صالح - تحقق من معطيات الإرسال");
-    } else {
-      throw new Error(`فشل إرسال البريد: ${error.text || error.message}`);
+      return { ok: false, error: "emailjs_send_exception", detail: sendErr, logs };
     }
+
+    // 5) response قد يكون EmailJSResponseStatus أو ما شابه
+    logs.push("✅ emailjs.send returned:");
+    try {
+      logs.push(JSON.stringify(response));
+    } catch (e) {
+      logs.push(String(response));
+    }
+
+    // 6) فحص حالة الرد
+    const status = response && response.status ? response.status : null;
+    const text = response && response.text ? response.text : null;
+
+    console.log("✅ EmailJS Response Status:", status);
+    console.log("✅ EmailJS Response Text:", text);
+
+    if (status === 200 || status === "200" || text === "OK") {
+      logs.push("🎉 EmailJS reports success");
+      console.log("🎉 Email sent successfully!");
+      return { ok: true, response, logs };
+    } else {
+      logs.push("⚠️ EmailJS returned non-200 status or unknown response");
+      console.log("⚠️ EmailJS returned unexpected response");
+      return { ok: false, response, logs };
+    }
+  } catch (error) {
+    logs.push("💥 Unexpected error in sendEmail: " + String(error));
+    console.error("💥 Unexpected error in sendEmail:", error);
+    return { ok: false, error: "unexpected_error", detail: error, logs };
   }
-}
-
-/**
- * 🔹 دالة مساعدة للتحقق من إعدادات EmailJS
- */
-export function checkEmailJSConfig() {
-  const requiredEnvVars = [
-    'EMAILJS_SERVICE_ID',
-    'EMAILJS_TEMPLATE_ID', 
-    'EMAILJS_PUBLIC_KEY',
-    'EMAILJS_PRIVATE_KEY'
-  ];
-
-  console.log("🔍 فحص إعدادات EmailJS:");
-  
-  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-  
-  if (missingVars.length > 0) {
-    console.error("❌ متغيرات environment مفقودة:", missingVars);
-    return false;
-  }
-
-  console.log("✅ جميع متغيرات EmailJS موجودة");
-  console.log("🔧 Service ID:", process.env.EMAILJS_SERVICE_ID?.substring(0, 10) + '...');
-  console.log("🔧 Template ID:", process.env.EMAILJS_TEMPLATE_ID?.substring(0, 10) + '...');
-  
-  return true;
-}
-
-/**
- * 🔹 إصدار مبسط للإرسال السريع
- */
-export async function sendQuickEmail(to, otp_code, user_name = "Utilisateur", isReset = false) {
-  const subject = isReset 
-    ? "Code de réinitialisation du mot de passe - Livraison Express"
-    : "Code de vérification - Livraison Express";
-
-  return await sendEmail(to, subject, otp_code, user_name);
 }
